@@ -1,4 +1,6 @@
 ﻿using GadgetsOnline.Models;
+using GadgetsOnline.Repository.Implimentation;
+using GadgetsOnline.Repository.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,33 +12,48 @@ namespace GadgetsOnline.Api
 {
     public class CategoryController : ApiController
     {
-        GadgetsOnlineEntities store = new GadgetsOnlineEntities();
+
+        private ICategoryRepository _categoryRepository;
+
+        public CategoryController()
+        {
+            _categoryRepository = new CategoryRepository();
+        }
        
         [Route("Category/All")]
-        public IEnumerable<Category> GetAll()
+        public IHttpActionResult GetAll()
         {
-            return store.Categories.ToList();
+            return Ok(_categoryRepository.GetAll());
         }
 
         // GET api/<controller>/5
-        public Category Get(int id)
+        public IHttpActionResult Get(int id)
         {
-            return store.Categories.FirstOrDefault(c => c.CategoryId == id)
+            return Ok(_categoryRepository.Get(id));
 ;        }
 
         // POST api/<controller>
-        public void Post([FromBody] string value)
+        public IHttpActionResult Post([FromBody] Category category)
         {
-        }
+            if (category == null || category.CategoryId <= 0)
+                return BadRequest("Invalid Parameter");
 
+           return Ok(_categoryRepository.Update(category));
+        }
+       
         // PUT api/<controller>/5
-        public void Put(int id, [FromBody] string value)
+        public IHttpActionResult Put([FromBody] Category category)
         {
+            if (category == null)
+                return BadRequest("Invalid Parameter");
+
+            return Ok(_categoryRepository.Add(category));
         }
 
         // DELETE api/<controller>/5
-        public void Delete(int id)
+        public IHttpActionResult Delete(int id)
         {
+            return Ok(_categoryRepository.Delete(id));
         }
     }
 }

@@ -1,7 +1,9 @@
 ﻿using Swashbuckle.Application;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Web.Http;
 
 
@@ -21,9 +23,13 @@ namespace GadgetsOnline.App_Start
                 routeTemplate: "api/{controller}/{id}",
                 defaults: new { id = RouteParameter.Optional }
             );
+
+            config.Formatters.JsonFormatter
+                    .SupportedMediaTypes
+                    .Add(new MediaTypeHeaderValue(ConfigurationManager.AppSettings["SupportedMedia"]));
             //config.EnableSwagger()
             //    .EnableSwaggerUi();
-           SwaggerConfig.Register(config);
+            SwaggerConfig.Register(config);
         }
     }
 }

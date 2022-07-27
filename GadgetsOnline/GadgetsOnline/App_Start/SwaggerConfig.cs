@@ -2,7 +2,7 @@ using System.Web.Http;
 using WebActivatorEx;
 using GadgetsOnline;
 using Swashbuckle.Application;
-
+using System.Configuration;
 
 namespace GadgetsOnline
 {
@@ -14,7 +14,7 @@ namespace GadgetsOnline
           //  GlobalConfiguration.Configuration
                 config.EnableSwagger(c =>
                     {   
-                        c.SingleApiVersion("v1", "GadgetsOnline");
+                        c.SingleApiVersion("v1", ConfigurationManager.AppSettings["ApplicationName"]);
                     })
                 .EnableSwaggerUi();
         }
