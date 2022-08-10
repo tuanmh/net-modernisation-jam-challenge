@@ -1,0 +1,350 @@
+# -----------------------------------------------------------------------------------------------------
+# Documentation for the template is available at 
+# https://w.amazon.com/bin/view/AWS/Teams/Partner_Solutions/SA/MPSA/TeamResources/WindowsDevelopmentEC2CfnTemplateOpsGuide/
+# -----------------------------------------------------------------------------------------------------
+
+Description: An AWS module with an EC2 VM for .NET/Windows development.
+
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+
+      - Label:
+          default: Lab Main Info
+        Parameters:
+        - WindowsAdministratorPasswordPrefix # "+TheStrong1" is appended by the system.
+        - LabGuideUrl
+        - WorkshopNameTagValue
+        - RemoteAccessIpRange
+        - BootstrapCDK
+
+      - Label:
+          default: Sample App Parameters
+        Parameters:
+        - SampleAppGitRepoUrl
+        - SampleAppGitBranch
+        - SampleAppSolutionDir
+        - SampleAppSolutionFile
+        - SampleAppBuildConfig
+        - SampleAppCodeCommitRepoName
+      - Label:
+          default: Linux Docker Daemon Parameters
+        Parameters:
+        - StartDockerDaemonEC2
+        - LinuxDockerInstanceSize
+      - Label:
+          default: After-Lab Cleanup Parameters
+        Parameters:
+        - RipEcrRepoName
+        - RipCloudFormationTemplates
+      - Label:
+          default: Instance Initialization PS Script Parameters
+        Parameters:
+        - InitScriptGitTag
+      - Label:
+          default: User Script Parameters
+        Parameters:
+        - UserScriptGitUrl
+        - UserScriptGitTagOrBranch
+      - Label:
+          default: VPC and Subnet Id for the Instance to be deployed
+        Parameters:
+        - VpcId
+        - SubnetId
+      - Label:
+          default: Windows Dev Instance Parameters
+        Parameters:
+        - WindowsInstanceType
+
+Parameters:
+
+  WorkshopNameTagValue: # Also, this will be the name of the EC2 instance and multiple ofhter AWS resources.
+    Type: String
+    Description: Name tag value for resources created by this stack, including EC2 instance name
+    Default: "Workshop - .NET development on AWS"
+
+  WindowsAdministratorPasswordPrefix: # "+TheStrong1" is appended by the system.
+    Type: String
+    Description: "*REQUIRED*: A password prefix, 6 characters minimum, for Windows 'Administrator' user. See CFN template parameter comments for the password suffix information"
+    #AllowedPattern: "^\\S{6,}$"
+    MinLength: 6
+    ConstraintDescription: 6 characters minimum
+    Default: "DontEverPublishThis"
+
+  WindowsInstanceType:
+    Type: String
+    Description: EC2 Instance type for the Windows development instance.
+    Default: t3.xlarge
+
+  LabGuideUrl:
+    Type: String
+    Description: Either an internet URL or a file path to the home page of the workshop instructions/lab guide. If relative file path is used, it should be relative to the sample application location (see below). A desktop shortcut named "Lab Guide" is created pointing to the location provided as a value of this environment variable. If URI is a file path, the shortcut will be created only if SampleAppGitRepoUrl was also set
+    Default: ""
+
+  SampleAppGitRepoUrl:
+    Type: String
+    Description: Sample application Git repository URL. If specified, this git repo will be git clone w/o authentication, into a user directory (~/, %USERPROFILE%). If not specified, no sample app will be cloned
+    Default: ""
+
+  SampleAppGitBranch:
+    Type: String
+    Description: Specifies sample application Git branch or tag (with 'tags/' prefix). If not set, "master" is used. Applies only if SampleAppGitBranch is also specified
+    Default: "master"
+
+  SampleAppSolutionDir:
+    Type: String
+    Description: Relative path to a directory where sample app's main project or Visual Studio solution file is. If not supplied, main repo directory assumed to be the one. Applies only if SampleAppGitBranch is also specified
+    Default: "./"
+
+  SampleAppSolutionFile:
+    Type: String
+    Description: Name of the sample app Visual Studio project or solution file. dotnet build will be run for this file. If not specified, dotnet build will run against the SampleAppSolutionDir. The script will not terminate if build has failed. Applies only if SampleAppGitBranch is also specified
+    Default: ""
+
+  SampleAppBuildConfig:
+    Type: String
+    Description: Sample app's build configuration, Like Release or Debug. If not specified Debug is used. Applies only if SampleAppGitBranch is also specified
+    Default: "Debug"
+
+  SampleAppCodeCommitRepoName:
+    Type: String
+    Description: Configures "aws" git remote for sample app, pointing to an AWS CodeCommit repo of the specified name in the region where the system runs. If not specified, "Unicorn-Store-Sample-Git-Repo" is used. Applies only if SampleAppGitBranch is also specified
+    Default: Unicorn-Store-Sample-Git-Repo
+
+  BootstrapCDK:
+    Type: String
+    Description: If not empty, will run "cdk bootstrap" for the AWS environment, which is a combination of an AWS account nubmer and ASW Region
+    Default: ""
+
+  StartDockerDaemonEC2:
+    Type: String
+    Description: If specified (not blank), indicates that a satellite Linux EC2 instance hosting remote Docker daemon needs to be started. This enables using Linux Docker containers on Windows, making possible to run commands like docker build, docker images, docker ps to work with Linux containers on Windows VM.
+    Default: "" # Set it to "true" or another non-blank value to take effect. NOTE: Linux Containers implementation does not support debugging contaierized apps via Visual Studio.
+
+  LinuxDockerInstanceSize:
+    Type: String
+    Description: AWS EC2 instance type for the Docker daemon Linux EC2 instance. If not specified, "t3.small" is used. Applies only when StartDockerDaemonEC2 was also specified
+    Default: t3.small
+
+  RipEcrRepoName:
+    Type: String
+    Description: Comma-delimited list of Elastic Container Registry (ECR) names to be deleted by the undo/clean-up script. Usually used when CDK/CloudFormation is used for a lab, to create an ECR repo. CFN will not destroy an ECR if it's not empty. Does nothing if not specified
+    Default: unicorn-store-app
+
+  RipCloudFormationTemplates:
+    Type: String
+    Description: A comma-delimited list of CloudFormation stacks to be deleted by the undo/clean-up scripts. Usually used when CDK/CloudFormation is used for a lab. Does nothing if not specified
+    Default: ""
+
+  InitScriptGitTag:
+    Type: String
+    Description: Git branch name or tag (with the 'tags/' prefix) for instance initialization custom PS scripts. See https://github.com/vgribok/AWS-EC2-Windows-Dev-Init/releases/ for initialization script release information.
+    Default: tags/v1.7
+
+  RemoteAccessIpRange:
+    Type: String
+    Description: Public IP range from which the instance can be accessed with Remote Desktop over public Internet. Default value "0.0.0.0/0" means "anyone anywhere", so please restrict it whenever possible.
+    Default: "0.0.0.0/0"
+
+  UserScriptGitUrl:
+    Type: String
+    Description: Specifies the source of an optional user PowerShell script to be run at after system is initialized. Example at https://github.com/vgribok/CustomPsScriptSample.
+    Default: ""
+
+  UserScriptGitTagOrBranch:
+    Type: String
+    Description: Specified git branch (mutable) or tag (immutable) for the user PowerShell script located where UserScriptGitUrl parameter points to.
+    Default: "master"
+
+  # -----------------------------------
+  VpcId:
+    Type: String
+    Description: VPC to deploy the instance.
+    Default: ""
+  
+  SubnetId:
+    Type: String
+    Description: Subnet Id to deploy the instance.
+    Default: ""
+
+# For enabling this dev environment in other regions, please contact @vladhry
+Mappings:
+  RegionMap:
+    ap-south-1: # Asia Pacific (Mumbai)
+      AmiId1: ami-082c00af6b081ae54 # CreationDate: 03/29/2022 11:57:29
+      AmiId2: ami-061e2b10e8891dc84 # CreationDate: 11/16/2021 11:15:17
+    us-west-2: # US West (Oregon)
+      AmiId1: ami-0c648eb72cec9f42b # CreationDate: 03/20/2022 18:41:55
+      AmiId2: ami-052e79d76cb4f85ac # CreationDate: 11/09/2021 14:31:59
+    ap-southeast-2: # Asia Pacific (Sydney)
+      AmiId1: ami-0f3b1d2c5231281fa # CreationDate: 03/29/2022 11:58:08
+      AmiId2: ami-0e9afe91c88a0c930 # CreationDate: 11/16/2021 11:16:03
+    us-west-1: # US West (N. California)
+      AmiId1: ami-0257922854a3c7060 # CreationDate: 03/29/2022 11:58:16
+      AmiId2: ami-044ca14629ad1d219 # CreationDate: 11/16/2021 11:16:12
+    eu-west-3: # Europe (Paris)
+      AmiId1: ami-09fa7193b0713e55c # CreationDate: 03/29/2022 11:57:34
+      AmiId2: ami-0f375cd4e8a5f7020 # CreationDate: 11/16/2021 11:15:20
+    sa-east-1: # South America (Sao Paulo)
+      AmiId1: ami-00a6cb4f32ea79352 # CreationDate: 03/29/2022 11:57:57
+      AmiId2: ami-0f2acc3f8e574836d # CreationDate: 11/16/2021 11:15:49
+    me-south-1: # Middle East (Bahrain)
+      AmiId1: ami-071250674b65d44c9 # CreationDate: 03/29/2022 11:57:51
+      AmiId2: ami-0aa0fa1cc8a1b7e23 # CreationDate: 11/16/2021 11:15:40
+    eu-west-1: # Europe (Ireland)
+      AmiId1: ami-0a2e556b49baffa99 # CreationDate: 03/29/2022 11:43:23
+      AmiId2: ami-075975e23fd420c7a # CreationDate: 11/16/2021 11:15:26
+    eu-west-2: # Europe (London)
+      AmiId1: ami-09bb447030acd0aa6 # CreationDate: 03/29/2022 11:57:37
+      AmiId2: ami-05c93a97ab1d9d6b2 # CreationDate: 11/16/2021 11:15:23
+    us-east-2: # US East (Ohio)
+      AmiId1: ami-09709b0364c526997 # CreationDate: 03/16/2022 19:57:24
+      AmiId2: ami-07d1ab3a7c5f682da # CreationDate: 11/09/2021 11:42:49
+    ca-central-1: # Canada (Central)
+      AmiId1: ami-044b6f719ca5bed1a # CreationDate: 03/29/2022 11:58:00
+      AmiId2: ami-008bbedb7eb6d31b8 # CreationDate: 11/16/2021 11:15:52
+    ap-northeast-1: # Asia Pacific (Tokyo)
+      AmiId1: ami-001231a2dd5ce71f0 # CreationDate: 03/29/2022 11:43:27
+      AmiId2: ami-0511f5928c1a6cfd2 # CreationDate: 11/16/2021 11:15:44
+    eu-north-1: # Europe (Stockholm)
+      AmiId1: ami-07aab828b03af7532 # CreationDate: 03/29/2022 11:57:24
+      AmiId2: ami-0ff3e8b9cf2431f77 # CreationDate: 11/16/2021 11:15:12
+    ap-southeast-1: # Asia Pacific (Singapore)
+      AmiId1: ami-0be955bb3c6c253b8 # CreationDate: 03/29/2022 11:58:04
+      AmiId2: ami-0f961c0ff213c516c # CreationDate: 11/16/2021 11:15:57
+    us-east-1: # US East (N. Virginia)
+      AmiId1: ami-0daa1d02b36f3cf16 # CreationDate: 03/29/2022 11:58:15
+      AmiId2: ami-08c4792c1e769a690 # CreationDate: 11/16/2021 11:16:10
+    ap-northeast-2: # Asia Pacific (Seoul)
+      AmiId1: ami-05a717b3040dd321c # CreationDate: 03/29/2022 11:57:46
+      AmiId2: ami-063b898904c94f451 # CreationDate: 11/16/2021 11:15:35
+    ap-northeast-3: # Asia Pacific (Osaka)
+      AmiId1: ami-07c91e8839caf1cec # CreationDate: 03/29/2022 11:57:43
+      AmiId2: ami-0c70b3c1e57571325 # CreationDate: 11/16/2021 11:15:30
+    eu-central-1: # Europe (Frankfurt)
+      AmiId1: ami-08ca450bb5f9a0d53 # CreationDate: 03/29/2022 11:58:12
+      AmiId2: ami-01f693bdfdeb1a69b # CreationDate: 11/16/2021 11:16:07
+
+Resources:
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow RDP to client host
+      VpcId:
+        Ref: VpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3389
+        ToPort: 3389
+        CidrIp: !Ref RemoteAccessIpRange 
+      Tags:
+      - Key: Name
+        Value: !Sub "${WorkshopNameTagValue}-RDP"
+
+  SgSelfIngress:
+    # allow all traffic within the security group
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref InstanceSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref InstanceSecurityGroup
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceMachine:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref WindowsInstanceType
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref 'AWS::Region'
+        - AmiId1
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 200
+            VolumeType: gp3
+            Iops: 16000
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: 'true'
+          DeleteOnTermination: 'true'
+          GroupSet: 
+          - !Ref InstanceSecurityGroup
+          SubnetId: !Ref SubnetId
+      Tags:
+      - Key: WorkshopId
+        Value: !Ref WorkshopNameTagValue
+      - Key: Name
+        Value: !Ref WorkshopNameTagValue
+      UserData:
+        Fn::Base64: 
+          Fn::Sub:
+            - |
+              <powershell>
+              [string[][]] $envVars = @(
+              @("UNICORN_LAB_INIT_SCRIPT_BRANCH", "${InitScriptGitTag}"),
+              @("UNICORN_LAB_GUIDE_URL", "${LabGuideUrl}"), 
+              @("UNICORN_LAB_SAMPLE_APP_GIT_REPO_URL", "${SampleAppGitRepoUrl}"),
+              @("UNICORN_LAB_SAMPLE_APP_GIT_BRANCH", "${SampleAppGitBranch}"),
+              @("UNICORN_LAB_SAMPLE_APP_SOLUTION_DIR", "${SampleAppSolutionDir}"),
+              @("UNICORN_LAB_SAMPLE_APP_SOLUTION_FILE", "${SampleAppSolutionFile}"),
+              @("UNICORN_LAB_SAMPLE_APP_BUILD_CONFIG", "${SampleAppBuildConfig}"),
+              @("UNICORN_LAB_BOOTSTRAP_CDK", "${BootstrapCDK}"),
+              @("UNICORN_LAB_SAMPLE_APP_CODECOMMIT_REPO_NAME", "${SampleAppCodeCommitRepoName}"),
+              @("UNICORN_LAB_LINUX_DOCKER_START", "${StartDockerDaemonEC2}"),
+              @("UNICORN_LAB_LINUX_DOCKER_AMI", "${DockerLinuxAmiId}"),
+              @("UNICORN_LAB_LINUX_DOCKER_INSTANCE_SIZE", "${LinuxDockerInstanceSize}"),
+              @("UNICORN_LAB_AWS_RIP_ECR", "${RipEcrRepoName}"),
+              @("UNICORN_LAB_AWS_RIP_CFNS", "${RipCloudFormationTemplates}"),
+              @("UNICORN_LAB_RESERVED_1", "${WindowsAdministratorPasswordPrefix}"),
+              @("UNICORN_LAB_USER_SCRIPT_GIT_URL", "${UserScriptGitUrl}"),
+              @("UNICORN_LAB_USER_SCRIPT_GIT_BRANCH", "${UserScriptGitTagOrBranch}")
+              )
+              foreach($pair in $envVars)
+              {
+                  if($pair -and $pair[0] -and $pair[0] -ne "ARRAY-STARTER")
+                  {
+                      [System.Environment]::SetEnvironmentVariable($pair[0], $pair[1], [System.EnvironmentVariableTarget]::Machine)
+                  }
+              }
+              </powershell>
+            - {
+              DockerLinuxAmiId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AmiId2 ]
+              }
+Outputs:
+
+  # You may want to reference the Dev Env security group in other groups (e.g. to allow access to RDS)
+  InstanceSG:
+    Description: "EC2 Development Machine Security Group Id"
+    Value: !Ref InstanceSecurityGroup
+
+
+  # Users will need this to conenct to the dev env instance
+  InstanceIPAddress:
+    Description: "EC2 Development Machine Public IP Address"
+    Value: !GetAtt InstanceMachine.PublicIp

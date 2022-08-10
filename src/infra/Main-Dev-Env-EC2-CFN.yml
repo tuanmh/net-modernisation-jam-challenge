@@ -1,0 +1,275 @@
+# This template is a main template for Windows EC2 Dev Environment creation.
+# Nested-stack templates create Windows EC2 instance and other resources like optional custom VPC.
+# All parameters passed to the main template are passed to the nested Windows EC2 template.
+# More details on when and how to use this template are
+# at https://w.amazon.com/bin/view/AWS/Teams/Partner_Solutions/SA/MPSA/TeamResources/WindowsDevelopmentEC2CfnTemplateOpsGuide/
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Main template. Triggers nested stacks to create EC2 Windows Dev environment and VPC resources based on condition.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Main Template configuration
+        Parameters:
+          - CfnVersion
+          - UseDefaultVPC
+          - CfnTemplateBaseUrl
+      - Label:
+          default: Lab Main Info
+        Parameters:
+          - WindowsAdministratorPasswordPrefix # "+TheStrong1" is appended by the system.
+          - LabGuideUrl
+          - WorkshopNameTagValue
+          - RemoteAccessIpRange
+          - BootstrapCDK
+      - Label:
+          default: Sample App Parameters
+        Parameters:
+          - SampleAppGitRepoUrl
+          - SampleAppGitBranch
+          - SampleAppSolutionDir
+          - SampleAppSolutionFile
+          - SampleAppBuildConfig
+          - SampleAppCodeCommitRepoName
+      - Label:
+          default: Linux Docker Daemon Parameters
+        Parameters:
+          - StartDockerDaemonEC2
+          - LinuxDockerInstanceSize
+      - Label:
+          default: After-Lab Cleanup Parameters
+        Parameters:
+          - RipEcrRepoName
+          - RipCloudFormationTemplates
+      - Label:
+          default: User Script Parameters
+        Parameters:
+          - UserScriptGitUrl
+          - UserScriptGitTagOrBranch
+      - Label:
+          default: Windows Dev Instance Parameters
+        Parameters:
+          - WindowsInstanceType
+
+Parameters:
+  CfnVersion:
+    Type: String
+    Description: An S3 folder name with this CFN template dependency/nested stack templates.
+    Default: "2022-03-29-19-03" # 'latest' is mutable, i.e. auto-updated with inherent risk of something not working quite the same as last time.
+
+  CfnTemplateBaseUrl:
+    Type: String
+    Description: The base URL for finding nested stack templates.
+    Default: "https://windows-dev-env-ec2.s3.us-west-2.amazonaws.com/cfn/"
+
+  UseDefaultVPC:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Conditional parameter to use default VPC or create new one.
+    Default: "false"
+
+  # -----------------------------------
+  WorkshopNameTagValue: # Also, this will be the name of the EC2 instance and multiple ofhter AWS resources.
+    Type: String
+    Description: Name tag value for resources created by this stack, including EC2 instance name
+    Default: "Workshop - .NET development on AWS"
+
+  WindowsAdministratorPasswordPrefix: # "+TheStrong1" is appended by the system.
+    Type: String
+    Description: "*REQUIRED*: A password prefix, 6 characters minimum, for Windows 'Administrator' user. See CFN template parameter comments for the password suffix information"
+    #AllowedPattern: "^\\S{6,}$"
+    MinLength: 6
+    ConstraintDescription: 6 characters minimum
+    Default: "test@20232024" # Hi all, do NOT EVER post this online. Our workshop EC2s have been highjacked because of this.
+
+  WindowsInstanceType:
+    Type: String
+    Description: EC2 Instance type for the Windows development instance.
+    Default: t3.xlarge
+
+  LabGuideUrl:
+    Type: String
+    Description: Either an internet URL or a file path to the home page of the workshop instructions/lab guide. If relative file path is used, it should be relative to the sample application location (see below). A desktop shortcut named "Lab Guide" is created pointing to the location provided as a value of this environment variable. If URI is a file path, the shortcut will be created only if SampleAppGitRepoUrl was also set
+    Default: ""
+
+  SampleAppGitRepoUrl:
+    Type: String
+    Description: Sample application Git repository URL. If specified, this git repo will be git clone w/o authentication, into a user directory (~/, %USERPROFILE%). If not specified, no sample app will be cloned
+    Default: ""
+
+  SampleAppGitBranch:
+    Type: String
+    Description: Specifies sample application Git branch or tag (with 'tags/' prefix). If not set, "master" is used. Applies only if SampleAppGitBranch is also specified
+    Default: "master"
+
+  SampleAppSolutionDir:
+    Type: String
+    Description: Relative path to a directory where sample app's main project or Visual Studio solution file is. If not supplied, main repo directory assumed to be the one. Applies only if SampleAppGitBranch is also specified
+    Default: "./"
+
+  SampleAppSolutionFile:
+    Type: String
+    Description: Name of the sample app Visual Studio project or solution file. dotnet build will be run for this file. If not specified, dotnet build will run against the SampleAppSolutionDir. The script will not terminate if build has failed. Applies only if SampleAppGitBranch is also specified
+    Default: ""
+
+  SampleAppBuildConfig:
+    Type: String
+    Description: Sample app's build configuration, Like Release or Debug. If not specified Debug is used. Applies only if SampleAppGitBranch is also specified
+    Default: "Debug"
+
+  SampleAppCodeCommitRepoName:
+    Type: String
+    Description: Configures "aws" git remote for sample app, pointing to an AWS CodeCommit repo of the specified name in the region where the system runs. If not specified, "Unicorn-Store-Sample-Git-Repo" is used. Applies only if SampleAppGitBranch is also specified
+    Default: Unicorn-Store-Sample-Git-Repo
+
+  BootstrapCDK:
+    Type: String
+    Description: If not empty, will run "cdk bootstrap" for the AWS environment, which is a combination of an AWS account nubmer and ASW Region
+    Default: ""
+
+  StartDockerDaemonEC2:
+    Type: String
+    Description: If specified (not blank), indicates that a satellite Linux EC2 instance hosting remote Docker daemon needs to be started. This enables using Linux Docker containers on Windows, making possible to run commands like docker build, docker images, docker ps to work with Linux containers on Windows VM.
+    Default: "" # Set it to "true" or another non-blank value to take effect. NOTE: Linux Containers implementation does not support debugging contaierized apps via Visual Studio.
+
+  LinuxDockerInstanceSize:
+    Type: String
+    Description: AWS EC2 instance type for the Docker daemon Linux EC2 instance. If not specified, "t3.small" is used. Applies only when StartDockerDaemonEC2 was also specified
+    Default: t3.small
+
+  RipEcrRepoName:
+    Type: String
+    Description: Comma-delimited list of Elastic Container Registry (ECR) names to be deleted by the undo/clean-up script. Usually used when CDK/CloudFormation is used for a lab, to create an ECR repo. CFN will not destroy an ECR if it's not empty. Does nothing if not specified
+    Default: unicorn-store-app
+
+  RipCloudFormationTemplates:
+    Type: String
+    Description: A comma-delimited list of CloudFormation stacks to be deleted by the undo/clean-up scripts. Usually used when CDK/CloudFormation is used for a lab. Does nothing if not specified
+    Default: ""
+
+  RemoteAccessIpRange:
+    Type: String
+    Description: Public IP range from which the instance can be accessed with Remote Desktop over public Internet. Default value "0.0.0.0/0" means "anyone anywhere", so please restrict it whenever possible.
+    Default: "0.0.0.0/0"
+
+  UserScriptGitUrl:
+    Type: String
+    Description: Specifies the source of an optional user PowerShell script to be run at after system is initialized. Example at https://github.com/vgribok/CustomPsScriptSample.
+    Default: ""
+
+  UserScriptGitTagOrBranch:
+    Type: String
+    Description: Specified git branch (mutable) or tag (immutable) for the user PowerShell script located where UserScriptGitUrl parameter points to.
+    Default: "master"
+
+Conditions:
+  IsUseDefaultVPC: !Equals [!Ref UseDefaultVPC, "true"]
+
+Resources:
+  #VPC resource creation
+  VPCResourceStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        !If [
+          IsUseDefaultVPC,
+          !Join [
+            "/",
+            [
+              !Ref CfnTemplateBaseUrl,
+              !Ref CfnVersion,
+              "Default-VPC-Dev-Env-CFN.yml",
+            ],
+          ],
+          !Join [
+            "/",
+            [
+              !Ref CfnTemplateBaseUrl,
+              !Ref CfnVersion,
+              "Custom-VPC-Dev-Env-CFN.yml",
+            ],
+          ],
+        ]
+      Parameters:
+        WorkshopNameTagValue: !Ref WorkshopNameTagValue
+
+  SqlServerResourceStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        !If [
+          IsUseDefaultVPC,
+          !Join [
+            "/",
+            [
+              !Ref CfnTemplateBaseUrl,
+              !Ref CfnVersion,
+              "Default-VPC-Dev-Env-CFN.yml",
+            ],
+          ],
+          !Join [
+            "/",
+            [
+              !Ref CfnTemplateBaseUrl,
+              !Ref CfnVersion,
+              "Custom-VPC-Dev-Env-CFN.yml",
+            ],
+          ],
+        ]
+      Parameters:
+        WorkshopNameTagValue: !Ref WorkshopNameTagValue
+
+  #Devloper desktop for workshop
+  WindowsDevEC2Stack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VPCResourceStack # Add this line to ensure that the EC2 stack is created and destroyed in the correct order
+    Properties:
+      TemplateURL:
+        !Join [
+          "/",
+          [
+            !Ref CfnTemplateBaseUrl,
+            !Ref CfnVersion,
+            "Windows-Dev-Env-EC2-CFN.yaml",
+          ],
+        ]
+      Parameters:
+        WorkshopNameTagValue: !Ref WorkshopNameTagValue
+        VpcId: !GetAtt VPCResourceStack.Outputs.VpcId
+        SubnetId:
+          !Select [0, !Split [",", !GetAtt VPCResourceStack.Outputs.Subnets]]
+        WindowsAdministratorPasswordPrefix: !Ref WindowsAdministratorPasswordPrefix
+        WindowsInstanceType: !Ref WindowsInstanceType
+        LabGuideUrl: !Ref LabGuideUrl
+        SampleAppGitRepoUrl: !Ref SampleAppGitRepoUrl
+        SampleAppGitBranch: !Ref SampleAppGitBranch
+        SampleAppSolutionDir: !Ref SampleAppSolutionDir
+        SampleAppSolutionFile: !Ref SampleAppSolutionFile
+        SampleAppBuildConfig: !Ref SampleAppBuildConfig
+        SampleAppCodeCommitRepoName: !Ref SampleAppCodeCommitRepoName
+        BootstrapCDK: !Ref BootstrapCDK
+        StartDockerDaemonEC2: !Ref StartDockerDaemonEC2
+        LinuxDockerInstanceSize: !Ref LinuxDockerInstanceSize
+        RipEcrRepoName: !Ref RipEcrRepoName
+        RipCloudFormationTemplates: !Ref RipCloudFormationTemplates
+        RemoteAccessIpRange: !Ref RemoteAccessIpRange
+        UserScriptGitUrl: !Ref UserScriptGitUrl
+        UserScriptGitTagOrBranch: !Ref UserScriptGitTagOrBranch
+
+Outputs:
+  DevEnvIP:
+    Value: !GetAtt WindowsDevEC2Stack.Outputs.InstanceIPAddress
+    Description: "Public IP of the development environment"
+    Export:
+      Name: "DevEnvIP"
+
+  DevEnvSG:
+    Value: !GetAtt WindowsDevEC2Stack.Outputs.InstanceSG
+    Description: "Security group of the development environment"
+    Export:
+      Name: "DevEnvSG"
