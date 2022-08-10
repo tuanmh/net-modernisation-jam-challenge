@@ -135,7 +135,7 @@ Parameters:
   StartDockerDaemonEC2:
     Type: String
     Description: If specified (not blank), indicates that a satellite Linux EC2 instance hosting remote Docker daemon needs to be started. This enables using Linux Docker containers on Windows, making possible to run commands like docker build, docker images, docker ps to work with Linux containers on Windows VM.
-    Default: "" # Set it to "true" or another non-blank value to take effect. NOTE: Linux Containers implementation does not support debugging contaierized apps via Visual Studio.
+    Default: "true" # Set it to "true" or another non-blank value to take effect. NOTE: Linux Containers implementation does not support debugging contaierized apps via Visual Studio.
 
   LinuxDockerInstanceSize:
     Type: String
@@ -320,3 +320,4 @@ Outputs:
     Value: !GetAtt WindowsDevEC2Stack.Outputs.InstanceSG
     Description: "Security group of the development environment"
     Export:
+      Name: "DevEnvSG"
