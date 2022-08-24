@@ -10,6 +10,7 @@ using System.Web.Http;
 
 namespace GadgetsOnline.Api
 {
+    [Route("[Controller]")]
     public class ProductController : ApiController
     {
         private IProductRepository _productRepository;
@@ -20,19 +21,21 @@ namespace GadgetsOnline.Api
         }
 
         [Route("Product/All")]
+        [HttpGet]
         public IHttpActionResult GetAll()
         {
             return Ok(_productRepository.GetAll());
         }
 
-        // GET api/<controller>/5
+        [Route("Product/{id}")]
+        [HttpGet]
         public IHttpActionResult Get(int id)
         {
             return Ok(_productRepository.Get(id));
             ;
         }
 
-        // POST api/<controller>
+       [HttpPost]
         public IHttpActionResult Post([FromBody] Product category)
         {
             if (category == null || category.ProductId <= 0)
@@ -41,7 +44,7 @@ namespace GadgetsOnline.Api
             return Ok(_productRepository.Update(category));
         }
 
-        // PUT api/<controller>/5
+        [HttpPut]
         public IHttpActionResult Put([FromBody] Product category)
         {
             if (category == null)
@@ -50,7 +53,7 @@ namespace GadgetsOnline.Api
             return Ok(_productRepository.Add(category));
         }
 
-        // DELETE api/<controller>/5
+        [HttpDelete]
         public IHttpActionResult Delete(int id)
         {
             return Ok(_productRepository.Delete(id));
